@@ -4,6 +4,7 @@ var striptags = require('striptags');
 var Q = require('q');
 var cheerio = require('cheerio');
 var request = require('request');
+var he = require('he');
 
 function convert(html) {
     var jsonResponse = [];
@@ -43,7 +44,6 @@ function convert(html) {
     });
     return jsonResponse;
 }
-convert = convert;
 
 convertUrl = function (url, callback) {
     if (typeof(callback) === "function") {
@@ -59,7 +59,7 @@ convertUrl = function (url, callback) {
                 return convert(html);
             });
     }
-}
+};
 
 function fetchUrl(url, callback) {
     var deferred = Q.defer();
@@ -77,52 +77,58 @@ String.prototype.replaceAll = function (search, replacement) {
 
 var university_name_list = ["University of New South Wales", "University of Queensland", "Queensland University of Technology"];
 
-var urlList = ['https://www.ntnu.no/wiki/plugins/viewsource/viewpagesrc.action?pageId=78977206', "https://www.ntnu.no/wiki/display/utland/University+of+Queensland+-+Brisbane"];
+var urlList = ["https://www.ntnu.no/wiki/display/utland/University+of+New+South+Wales+-+Sydney+-+UNSW", "https://www.ntnu.no/wiki/display/utland/University+of+Queensland+-+Brisbane", "https://www.ntnu.no/wiki/display/utland/Queensland+University+of+Technology+-+Brisbane"];
 
-counter = 0;
-
-for (var i = 0; i < urlList.length; i++) {
-
-    convertUrl(urlList[i], function (tablesAsJson) {
-        var fullAbroadCourseList = [];
-        var courseMatchList = [];
-        var abroadCourseCodes = [];
-
-
+let counter = 0;
+function make(url, university_name, iteration, lists) {
+    var fullAbroadCourseList = [];
+    var courseMatchList = [];
+    var abroadCourseCodes = [];
+    //console.log("Calling async for: " + university_name);
+    convertUrl(url, function (tablesAsJson) {
+        //console.log("Working with: " + university_name);
         //Get the first table from results
         var courseList = tablesAsJson[0];
-
-
         for (var course in courseList) {
+            //console.log(course);
+            //console.log("Course in university: " + university_name);
             var newListOfContent = {};
             var courseContent = courseList[course];
 
             var abroadCourseTitle = courseContent[Object.keys(courseContent)[0]];
             var description_url = abroadCourseTitle.match(/href="([^"]*)/)[1];
-            //courseContent = striptags(courseContent.replaceAll("&#xA0;"," "));
-            console.log(description_url);
+
             abroadCourseTitle = striptags(abroadCourseTitle.replaceAll("&#xA0;", " "));
-            console.log(abroadCourseTitle);
 
-
-            var studyPoints = parseFloat(courseContent[Object.keys(courseContent)[1]].replace(/,/g, "."));
+            var parsedStudy = striptags(courseContent[Object.keys(courseContent)[1]]);
+            parsedStudy = he.decode(parsedStudy);
+            var studyPoints = parseFloat(parsedStudy.toString().replace(/,/g, ".").substring(0,3));
             var homeCourseTitle = striptags(courseContent[Object.keys(courseContent)[2]].replaceAll("&#xA0;", " "));
-            var comment = striptags(courseContent[Object.keys(courseContent)[3]].replaceAll("&#xA0;", " ").replaceAll("&#xE5;", "å").replaceAll("&#xF8;", "ø").replaceAll("&#xD8;", "Ø"));
-            var approvalDate = courseContent[Object.keys(courseContent)[4]];
+            var comment = he.decode(striptags(courseContent["Kommentar"]));
+            var approvalDate = he.decode(striptags(courseContent["OK"])).substring(0, 10).replaceAll(".", "-").replaceAll(' ','');
 
             abroadCourseTitle = abroadCourseTitle.replace(/-/g, "").replace(/=/g, "").trim();
-            var abroadCode = abroadCourseTitle.substring(0, 8).replace(/\s+/g, '').replace(/-/g, "").replace(/=/g, "").trim();
-            var abroadTitle = abroadCourseTitle.substring(8, abroadCourseTitle.length).replace(/-/g, "").replace(/=/g, "").trim();
+            var abroadCode = abroadCourseTitle.substring(0, abroadCourseTitle.indexOf(' ')).replace(/\s+/g, '').replace(/-/g, "").replace(/=/g, "").trim();
+            var abroadTitle = abroadCourseTitle.substring(abroadCourseTitle.indexOf(' ') + 1).replace(/-/g, "").replace(/=/g, "").trim();
 
-            var homeCode = homeCourseTitle.replaceAll("&#xD8;", "Ø").substring(0, 7).trim();
+            var homeCode = he.decode(homeCourseTitle).substring(0, 7).trim();
             var homeTitle = homeCourseTitle.substring(8, homeCourseTitle.length).replace(/-/g, "").replace(/=/g, "").trim();
+
+            if (homeCode.startsWith("EiT")) {
+                homeCode = "EiT";
+                homeTitle = "Eksperter i Team";
+            }
+            else if (homeCode.startsWith("KPro")) {
+                homeCode = "KPro";
+                homeTitle = "Kunderstyrt Prosjekt"
+            }
 
             newListOfContent["model"] = "utsida.abroadcourse";
             //newListOfContent["pk"] = null;
             newListOfContent["fields"] = {
                 "code": abroadCode,
                 "name": abroadTitle,
-                "university": [university_name_list[i]],
+                "university": [university_name],
                 "description_url": description_url,
                 "study_points": studyPoints,
                 "pre_requisites": []
@@ -133,7 +139,6 @@ for (var i = 0; i < urlList.length; i++) {
                 abroadCourseCodes.push(abroadCode);
             }
 
-
             var courseMatch = {};
 
             courseMatch["pk"] = counter;
@@ -143,28 +148,35 @@ for (var i = 0; i < urlList.length; i++) {
             //Building the fields
             var fields = {};
             fields["homeCourse"] = [homeCode];
-            var abList = [abroadCode, university_name_list[i]];
-            fields["abroadCourse"] = abList;
-            fields["approved"] = true;
-            fields["approval_date"] = striptags(approvalDate.replaceAll("&#xA0;", " ")).substring(0, 10).replace(".", "-").replace(".", "-");
+            fields["abroadCourse"] = [abroadCode, university_name];
+            if (approvalDate == '' || approvalDate == ' ') {
+                fields["approved"] = false
+            }
+            else {
+                fields["approved"] = true;
+                fields["approval_date"] = approvalDate;
+            }
             fields["comment"] = comment;
             courseMatch["fields"] = fields;
             courseMatchList.push(courseMatch);
 
-
         }
-        //console.log(fullAbroadCourseList);
-        //console.log(courseMatchList);
-
-
-        var file = '/Users/trulsmp/Documents/master/scripting/abroad_courses_script.json';
-        var file2 = '/Users/trulsmp/Documents/master/scripting/course_matches_script.json';
-        jsonfile.writeFileSync(file, fullAbroadCourseList);
-        jsonfile.writeFileSync(file2, courseMatchList);
+        console.log("Finished working with: " + university_name);
+        lists([fullAbroadCourseList, courseMatchList], iteration);
 
     });
-
 }
+
+for (let i = 0; i < urlList.length; i++) {
+    make(urlList[i], university_name_list[i], i, function (lists, count) {
+        console.log("returned values" + " " + university_name_list[count]);
+        var file = '/Users/trulsmp/Documents/master/scripting/results/abroad_courses' + count + '.json';
+        var file2 = '/Users/trulsmp/Documents/master/scripting/results/course_matches' + count + '.json';
+        jsonfile.writeFileSync(file, lists[0]);
+        jsonfile.writeFileSync(file2, lists[1]);
+    });
+}
+
 
 
 
