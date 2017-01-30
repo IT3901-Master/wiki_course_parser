@@ -75,9 +75,9 @@ String.prototype.replaceAll = function (search, replacement) {
     return target.split(search).join(replacement);
 };
 
-var university_name_list = ["University of California, Santa Barbara"];
+var university_name_list = ["University of California, Santa Barbara","University of Queensland","University of New South Wales"];
 
-var urlList = ["https://www.ntnu.no/wiki/display/utland/UCSB+courses+matching+IDI+courses"];
+var urlList = ["https://www.ntnu.no/wiki/display/utland/UCSB+courses+matching+IDI+courses","https://www.ntnu.no/wiki/display/utland/University+of+Queensland+-+Brisbane","https://www.ntnu.no/wiki/display/utland/University+of+New+South+Wales+-+Sydney+-+UNSW"];
 
 let counter = 0;
 function make(url, university_name, iteration, lists) {
@@ -95,11 +95,10 @@ function make(url, university_name, iteration, lists) {
             var newListOfContent = {};
             var courseContent = courseList[course];
 
-
             var abroadCourseTitle = courseContent[Object.keys(courseContent)[0]];
 
 
-            //PROBLEM STUFF
+            // Getting the HREF for an abroadcourse link setup.
             if (abroadCourseTitle.match(/href="([^"]*)/)) {
                 var description_url = abroadCourseTitle.match(/href="([^"]*)/)[1];
             }
@@ -124,15 +123,18 @@ function make(url, university_name, iteration, lists) {
                 var abroadTitle = abroadCourseTitle.substring(abroadCourseTitle.indexOf(' ') + 1).replace(/-/g, "").replace(/=/g, "").trim();
             }
             else {
-                var abroadCode = abroadCourseTitle.substring(0, abroadCourseTitle.indexOf(' ',abroadCourseTitle.indexOf(' ') +1)).replace(/\s+/g, '').replace(/-/g, "").replace(/=/g, "").trim();
+                // if space should be removed
+                //var abroadCode = abroadCourseTitle.substring(0, abroadCourseTitle.indexOf(' ',abroadCourseTitle.indexOf(' ') +1)).replace(/\s+/g, '').replace(/-/g, "").replace(/=/g, "").trim();
+                var abroadCode = abroadCourseTitle.substring(0, abroadCourseTitle.indexOf(' ',abroadCourseTitle.indexOf(' ') +1)).replace(/-/g, "").replace(/=/g, "").trim();
                 var abroadTitle = abroadCourseTitle.substring(abroadCourseTitle.indexOf(' ',abroadCourseTitle.indexOf(' ')+1) + 1).replace(/-/g, "").replace(/=/g, "").trim();
             }
 
 
 
+
+            // NTNU course code parsing
             var homeCode = he.decode(homeCourseTitle).substring(0, 7).trim();
             var homeTitle = homeCourseTitle.substring(8, homeCourseTitle.length).replace(/-/g, "").replace(/=/g, "").trim();
-
 
             if (homeCode.startsWith("EiT") || homeCode.startsWith("EIT") || homeCode.startsWith("eit")) {
                 homeCode = "EiT";
@@ -142,7 +144,13 @@ function make(url, university_name, iteration, lists) {
                 homeCode = "KPro";
                 homeTitle = "Kunderstyrt Prosjekt"
             }
+            else if (homeCode.startsWith("Komplement")) {
+                homeCode = "K-emne";
+                homeTitle = "Komplementær emne";
+            }
 
+
+            // Making the abroadcourse list
             newListOfContent["model"] = "utsida.abroadcourse";
             //newListOfContent["pk"] = null;
             newListOfContent["fields"] = {
@@ -154,6 +162,7 @@ function make(url, university_name, iteration, lists) {
                 "pre_requisites": []
             };
 
+            //Check if abroadcourse already is appended, if not, then it adds it.
             if (abroadCourseCodes.indexOf(abroadCode) == -1) {
                 fullAbroadCourseList.push(newListOfContent);
                 abroadCourseCodes.push(abroadCode);
@@ -161,15 +170,18 @@ function make(url, university_name, iteration, lists) {
 
             var courseMatch = {};
 
-            courseMatch["pk"] = counter;
+            //courseMatch["pk"] = counter;
             counter++;
             courseMatch["model"] = "utsida.coursematch";
 
             //Building the fields
             var fields = {};
             fields["homeCourse"] = [homeCode];
-            fields["abroadCourse"] = [abroadCode, university_name];
+            fields["abroadCourse"] = [abroadCode,abroadTitle, university_name];
             if (approvalDate == '' || approvalDate == ' ') {
+                fields["approved"] = false
+            }
+            else if(courseContent["OK"].indexOf("<s>") !== -1) {
                 fields["approved"] = false
             }
             else {
