@@ -91,7 +91,7 @@ function make(url, university_name, iteration, lists) {
         var courseList = tablesAsJson[0];
         for (var course in courseList) {
             //console.log(course);
-            //console.log("Course in university: " + university_name);
+            console.log("Course in university: " + university_name);
             var newListOfContent = {};
             var courseContent = courseList[course];
 
@@ -115,6 +115,7 @@ function make(url, university_name, iteration, lists) {
             var homeCourseTitle = striptags(courseContent[Object.keys(courseContent)[2]].replaceAll("&#xA0;", " "));
             var comment = he.decode(striptags(courseContent["Kommentar"]));
             var approvalDate = he.decode(striptags(courseContent["OK"])).substring(0, 10).replaceAll(".", "-").replaceAll(' ','');
+            console.log(approvalDate);
 
             abroadCourseTitle = abroadCourseTitle.replace(/-/g, "").replace(/=/g, "").trim();
 
